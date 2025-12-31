@@ -1,7 +1,9 @@
 import pandas as pd
 import FinanceDataReader as fdr 
 from datetime import datetime, timedelta
-from core.kis_apis import fetch_daily_price
+from kis_apis import fetch_daily_price
+from time_cal import get_period_from_start
+
 # KRX 상장 종목 코드 가져오기
 def get_stock_code():
     '''
@@ -15,29 +17,20 @@ def get_stock_code():
     df_krx = df_krx[df_krx['Market'].isin(['KOSPI', 'KOSDAQ'])]
     
     codes = df_krx['Code'].tolist()
+    print('종목 가져오기 끝')
     return codes
 
 
 # 특정 종목의 가격 데이터를 데이터프레임으로 가져오는 함수
-def get_stock_price_frame(code, end_date=None, period=180, access_token=""):
+def get_stock_price_to_data_frame(code, period=90, access_token=""):
     '''
     특정 종목의 가격 데이터를 데이터프레임으로 가져오는 함수
     - end_date: 데이터를 가져올 끝 날짜. 기본값은 오늘(now).
     - period: end_date로부터 거꾸로 계산할 일수 (기본값 180일)
     '''
+    date_1, date_2= get_period_from_start(period=90)
     
-    if end_date is None:
-        end_obj = datetime.now()
-    else:
-        end_obj = datetime.strptime(end_date, '%Y%m%d')    
-    start_obj = end_obj - timedelta(days=period)
-
-    final_end = end_obj.strftime('%Y%m%d')
-    final_start = start_obj.strftime('%Y%m%d')
-
-    print(f'🚀 {code} 수집 기간: {final_start} ~ {final_end} ({period}일간)')
-    res_data = fetch_daily_price(access_token, code, final_start, final_end)
-    
+    res_data = fetch_daily_price(access_token, code, date_1, date_2)
     if "output2" in res_data and res_data["output2"]:
         df_price = pd.DataFrame(res_data["output2"])
         
@@ -55,7 +48,6 @@ def get_stock_price_frame(code, end_date=None, period=180, access_token=""):
         # 6. 정렬 (KIS는 최신순으로 주므로 과거순으로 정렬)
         df_price = df_price.sort_values(by='Date').reset_index(drop=True)
         
-        print(f'✅ {code} 데이터프레임 생성 완료 ({len(df_price)}건)')
         return df_price[['Date', 'Close']]
     
     else:
@@ -73,13 +65,12 @@ def filter_uptrend_stocks(codeList, aceess_token=""):
     uptrend_stocks = []    
     
     print('Filtering uptrend stocks...')    
+    
     for code in codeList:
-        df = get_stock_price_frame(code, access_token=aceess_token)
-        print(df)
-        return
+        
         try:
             # 에러가 발생할 가능성이 있는 구간 시작
-            df = get_stock_price_frame(code)
+            df = get_stock_price_to_data_frame(code, access_token=aceess_token)
             
             if df is None or df.empty:
                 continue
@@ -90,10 +81,7 @@ def filter_uptrend_stocks(codeList, aceess_token=""):
             correlation_matrix = df[['Time', 'Close']].corr()
             corr_value = correlation_matrix.loc['Time', 'Close']
             
-            print(f"📈 {code}의 상관계수: {corr_value:.4f}")
-            
             if corr_value >= 0.5:
-                print(f"✅ {code}는 우상향 종목입니다!")
                 uptrend_stocks.append(code)
             # 에러가 발생할 가능성이 있는 구간 끝
             return
